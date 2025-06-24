@@ -2,6 +2,8 @@
 
 这是一个为 Obsidian 笔记软件开发的插件，它实现了一个简单而强大的功能：**当点击文件夹时，显示与该文件夹同名的笔记内容，而非展开文件夹**。
 
+https://github.com/user-attachments/assets/d8fc1e4d-2fd6-4be4-a2cb-53ca528eaa12
+
 ## ✨ 主要特性
 
 - **同名笔记识别**：自动识别与文件夹同名的 Markdown 文件作为文件夹笔记

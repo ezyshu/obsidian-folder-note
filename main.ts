@@ -13,8 +13,7 @@ import {
 	ViewState
 } from 'obsidian';
 
-// 使用固定文件名
-const FOLDER_NOTE_NAME = 'README.md';
+// 不再使用固定文件名，而是动态获取
 
 interface FileExplorer {
 	onClick: (event: MouseEvent, file: TAbstractFile) => void;
@@ -94,13 +93,21 @@ export default class FolderNotePlugin extends Plugin {
 		});
 	}
 
+	// 获取文件夹笔记的文件名
+	getFolderNoteName(folder: TFolder): string {
+		return `${folder.name}.md`;
+	}
+
 	// 索引现有的文件夹笔记
 	async indexExistingFolderNotes() {
 		const files = this.app.vault.getMarkdownFiles();
 		for (const file of files) {
-			if (file.name === FOLDER_NOTE_NAME) {
-				const parentFolder = file.parent;
-				if (parentFolder) {
+			// 获取文件所在的文件夹
+			const parentFolder = file.parent;
+			if (parentFolder) {
+				// 检查文件名是否与文件夹名称匹配
+				const expectedNoteName = this.getFolderNoteName(parentFolder);
+				if (file.name === expectedNoteName) {
 					this.folderNoteMap.set(parentFolder.path, file);
 					this.markFolderWithNote(parentFolder);
 				}
@@ -176,11 +183,14 @@ export default class FolderNotePlugin extends Plugin {
 			// 创建一个样式元素
 			const styleEl = document.createElement('style');
 			styleEl.id = 'folder-note-style';
-			styleEl.textContent = `
-				.nav-file-title[data-path$="${FOLDER_NOTE_NAME}"] {
-					display: none !important;
-				}
-			`;
+			
+			// 使用 CSS 选择器匹配所有可能的文件夹笔记
+			// 这里需要一个复杂的选择器，因为我们无法预先知道所有文件夹名称
+			// 我们可以让插件监听文件系统变化来动态更新这个样式
+			
+			// 初始化样式
+			this.updateHiddenNotesStyle(styleEl);
+			
 			document.head.appendChild(styleEl);
 			
 			// 保存引用以便在插件卸载时移除
@@ -191,14 +201,41 @@ export default class FolderNotePlugin extends Plugin {
 			console.error('创建隐藏样式失败', error);
 		}
 	}
+	
+	// 更新隐藏笔记的样式
+	updateHiddenNotesStyle(styleEl: HTMLStyleElement) {
+		// 获取所有文件夹
+		const folders = this.app.vault.getAllLoadedFiles()
+			.filter(file => file instanceof TFolder) as TFolder[];
+		
+		// 构建 CSS 选择器
+		let cssRules = [];
+		for (const folder of folders) {
+			const noteName = this.getFolderNoteName(folder);
+			const notePath = `${folder.path}/${noteName}`;
+			cssRules.push(`.nav-file-title[data-path="${notePath}"]`);
+		}
+		
+		// 如果有匹配的规则，添加到样式表
+		if (cssRules.length > 0) {
+			styleEl.textContent = `
+				${cssRules.join(',\n')} {
+					display: none !important;
+				}
+			`;
+		}
+	}
 
 	// 获取文件夹的笔记
 	getFolderNoteForFolder(folder: TFolder): TFile | null {
 		const folderNote = this.folderNoteMap.get(folder.path);
 		if (folderNote) return folderNote;
 
+		// 获取期望的笔记文件名
+		const noteName = this.getFolderNoteName(folder);
+		
 		// 检查是否存在同名笔记
-		const noteFilePath = normalizePath(`${folder.path}/${FOLDER_NOTE_NAME}`);
+		const noteFilePath = normalizePath(`${folder.path}/${noteName}`);
 		const file = this.app.vault.getAbstractFileByPath(noteFilePath);
 		
 		if (file instanceof TFile) {
@@ -230,13 +267,23 @@ export default class FolderNotePlugin extends Plugin {
 		// 创建基本内容
 		const content = `# ${folder.name}\n\n这是 ${folder.name} 文件夹的笔记。`;
 
+		// 获取笔记文件名
+		const noteName = this.getFolderNoteName(folder);
+		
 		// 创建笔记文件
-		const filePath = normalizePath(`${folder.path}/${FOLDER_NOTE_NAME}`);
+		const filePath = normalizePath(`${folder.path}/${noteName}`);
 		
 		try {
 			const file = await this.app.vault.create(filePath, content);
 			this.folderNoteMap.set(folder.path, file);
 			this.markFolderWithNote(folder);
+			
+			// 更新隐藏样式
+			const styleEl = document.getElementById('folder-note-style') as HTMLStyleElement;
+			if (styleEl) {
+				this.updateHiddenNotesStyle(styleEl);
+			}
+			
 			this.openFolderNote(file);
 		} catch (error) {
 			console.error('创建文件夹笔记失败', error);
@@ -246,21 +293,41 @@ export default class FolderNotePlugin extends Plugin {
 
 	// 处理文件创建事件
 	handleFileCreation(file: TAbstractFile) {
-		if (file instanceof TFile && file.name === FOLDER_NOTE_NAME) {
+		if (file instanceof TFile) {
 			const parentFolder = file.parent;
 			if (parentFolder) {
-				this.folderNoteMap.set(parentFolder.path, file);
-				this.markFolderWithNote(parentFolder);
+				// 检查文件名是否与文件夹名称匹配
+				const expectedNoteName = this.getFolderNoteName(parentFolder);
+				if (file.name === expectedNoteName) {
+					this.folderNoteMap.set(parentFolder.path, file);
+					this.markFolderWithNote(parentFolder);
+					
+					// 更新隐藏样式
+					const styleEl = document.getElementById('folder-note-style') as HTMLStyleElement;
+					if (styleEl) {
+						this.updateHiddenNotesStyle(styleEl);
+					}
+				}
 			}
 		}
 	}
 
 	// 处理文件删除事件
 	handleFileDeletion(file: TAbstractFile) {
-		if (file instanceof TFile && file.name === FOLDER_NOTE_NAME) {
+		if (file instanceof TFile) {
 			const parentFolder = file.parent;
 			if (parentFolder) {
-				this.folderNoteMap.delete(parentFolder.path);
+				// 检查文件名是否与文件夹名称匹配
+				const expectedNoteName = this.getFolderNoteName(parentFolder);
+				if (file.name === expectedNoteName) {
+					this.folderNoteMap.delete(parentFolder.path);
+					
+					// 更新隐藏样式
+					const styleEl = document.getElementById('folder-note-style') as HTMLStyleElement;
+					if (styleEl) {
+						this.updateHiddenNotesStyle(styleEl);
+					}
+				}
 			}
 		}
 	}
@@ -275,13 +342,30 @@ export default class FolderNotePlugin extends Plugin {
 			if (folderNote) {
 				this.folderNoteMap.delete(oldFolderPath);
 				this.folderNoteMap.set(file.path, folderNote);
+				
+				// 更新隐藏样式
+				const styleEl = document.getElementById('folder-note-style') as HTMLStyleElement;
+				if (styleEl) {
+					this.updateHiddenNotesStyle(styleEl);
+				}
 			}
 		}
-		else if (file instanceof TFile && file.name === FOLDER_NOTE_NAME) {
-			// 文件夹笔记被重命名
+		else if (file instanceof TFile) {
+			// 文件被重命名
 			const parentFolder = file.parent;
 			if (parentFolder) {
-				this.folderNoteMap.set(parentFolder.path, file);
+				// 检查文件名是否与文件夹名称匹配
+				const expectedNoteName = this.getFolderNoteName(parentFolder);
+				if (file.name === expectedNoteName) {
+					this.folderNoteMap.set(parentFolder.path, file);
+					this.markFolderWithNote(parentFolder);
+				}
+				
+				// 更新隐藏样式
+				const styleEl = document.getElementById('folder-note-style') as HTMLStyleElement;
+				if (styleEl) {
+					this.updateHiddenNotesStyle(styleEl);
+				}
 			}
 		}
 	}
@@ -315,16 +399,20 @@ class FolderNoteInfoTab extends PluginSettingTab {
 		infoDiv.addClass('folder-note-info');
 		
 		const title = infoDiv.createEl('h2');
-		title.setText('文件夹笔记');
+		title.setText('Folder Note');
+
+		const note = infoDiv.createEl('p');
+		note.setText('注意：此插件不需要任何设置，开箱即用。');
+		note.addClass('folder-note-important');
 		
 		const description = infoDiv.createEl('p');
-		description.setText('该插件允许你点击文件夹时显示该文件夹下的 README.md 笔记，而不是展开文件夹。');
+		description.setText('该插件允许你点击文件夹时显示与文件夹同名的笔记。');
 		
 		const featuresList = infoDiv.createEl('ul');
 		
 		const features = [
-			'点击文件夹时会显示该文件夹下的 README.md 笔记（如果存在）',
-			'如果文件夹下没有 README.md，点击时会正常展开文件夹',
+			'点击文件夹时会显示该文件夹下与文件夹同名的 .md 笔记（如果存在）',
+			'如果文件夹下没有同名笔记，点击时会正常展开文件夹',
 			'文件夹笔记在文件浏览器中会被自动隐藏',
 			'右键点击文件夹可以手动创建文件夹笔记'
 		];
@@ -334,8 +422,6 @@ class FolderNoteInfoTab extends PluginSettingTab {
 			listItem.setText(feature);
 		});
 		
-		const note = infoDiv.createEl('p');
-		note.setText('注意：此插件不需要任何设置，开箱即用。');
-		note.addClass('folder-note-important');
+		
 	}
 }

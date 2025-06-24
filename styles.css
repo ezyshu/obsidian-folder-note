@@ -1,4 +1,0 @@
-/* 隐藏文件夹笔记在文件浏览器中的显示 */
-.nav-file-title[data-path$="README.md"] {
-	display: none;
-}

@@ -1,0 +1,10 @@
+{
+	"id": "obsidian-folder-note",
+	"name": "Folder Note",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "点击文件夹时如存在 README.md 则显示它，否则正常展开文件夹",
+	"author": "ezyshu",
+	"authorUrl": "https://github.com/ezyshu",
+	"isDesktopOnly": false
+}

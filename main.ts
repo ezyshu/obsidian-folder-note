@@ -264,8 +264,8 @@ export default class FolderNotePlugin extends Plugin {
 			return;
 		}
 
-		// 创建基本内容
-		const content = `# ${folder.name}\n\n这是 ${folder.name} 文件夹的笔记。`;
+		// 创建空内容
+		const content = '';
 
 		// 获取笔记文件名
 		const noteName = this.getFolderNoteName(folder);

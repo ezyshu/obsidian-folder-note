@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-folder-note",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Create and display folder notes; clicking on a folder will show the content of its associated notes.",
 	"main": "main.js",
 	"scripts": {

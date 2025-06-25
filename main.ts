@@ -124,7 +124,40 @@ export default class FolderNotePlugin extends Plugin {
 				const folderEl = document.querySelector(`.nav-folder-title[data-path="${folder.path}"]`);
 				if (!folderEl) return;
 				
-				// 添加样式类
+				// 检查是否已经添加了图标
+				if (folderEl.querySelector('.folder-note-icon')) return;
+				
+				// 创建图标元素
+				const iconEl = document.createElement('div');
+				iconEl.addClass('folder-note-icon');
+				iconEl.setAttribute('aria-label', '打开文件夹笔记');
+				iconEl.innerHTML = `<svg viewBox="0 0 100 100" width="14" height="14" class="document">
+					<path fill="currentColor" stroke="currentColor" d="M14,4v92h72V29.2l-0.6-0.6l-24-24L60.8,4H14z M18,8h40v24h24v60H18V8z M62,10.9L79.1,28H62V10.9z"></path>
+				</svg>`;
+				
+				// 添加点击事件
+				iconEl.addEventListener('click', async (e: MouseEvent) => {
+					e.preventDefault();
+					e.stopPropagation();
+					
+					// 获取对应的文件夹笔记
+					const folderNote = this.getFolderNoteForFolder(folder);
+					if (folderNote) {
+						// 打开文件夹笔记
+						await this.openFolderNote(folderNote);
+					} else {
+						// 如果不存在笔记，询问是否创建
+						const create = confirm(`是否为 "${folder.name}" 文件夹创建笔记？`);
+						if (create) {
+							await this.createFolderNote(folder);
+						}
+					}
+				});
+				
+				// 将图标添加到文件夹标题元素中
+				folderEl.appendChild(iconEl);
+				
+				// 添加样式类，用于CSS样式
 				folderEl.addClass('has-folder-note');
 			}, 100);
 		} catch (error) {
@@ -132,57 +165,38 @@ export default class FolderNotePlugin extends Plugin {
 		}
 	}
 
-	// 扩展文件浏览器的行为
-	patchFileExplorer() {
-		try {
-			// 使用 DOM 事件监听来处理文件夹点击
-			this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-				// 查找是否点击了文件浏览器中的文件夹
-				const targetEl = evt.target as HTMLElement;
-				if (!targetEl) return;
-				
-				// 查找最近的文件夹标题元素
-				const folderTitleEl = targetEl.closest('.nav-folder-title') as HTMLElement;
-				if (!folderTitleEl) return;
-				
-				// 确保是文件夹标题而不是文件
-				if (folderTitleEl.parentElement?.classList.contains('nav-file')) return;
-				
-				// 获取文件夹路径
-				const folderPath = folderTitleEl.getAttribute('data-path');
-				if (!folderPath) return;
-				
-				// 获取对应的文件夹
-				const folder = this.app.vault.getAbstractFileByPath(folderPath);
-				if (!(folder instanceof TFolder)) return;
-				
-				// 检查该文件夹是否有关联笔记
-				const folderNote = this.getFolderNoteForFolder(folder);
-				if (folderNote) {
-					// 阻止默认行为（展开文件夹）
-					evt.preventDefault();
-					evt.stopPropagation();
-					
-					// 打开文件夹笔记
-					this.openFolderNote(folderNote);
-					return;
-				}
-				// 如果没有关联笔记，让默认行为继续（展开文件夹）
-			});
-			
-			// 使用 CSS 来隐藏文件夹笔记
-			this.hideFolderNotesWithCSS();
-		} catch (error) {
-			console.error('扩展文件浏览器失败', error);
-		}
-	}
-
-	// 使用 CSS 来隐藏文件夹笔记
+	// 使用 CSS 来隐藏文件夹笔记和设置文件夹笔记图标样式
 	hideFolderNotesWithCSS() {
 		try {
 			// 创建一个样式元素
 			const styleEl = document.createElement('style');
 			styleEl.id = 'folder-note-style';
+			
+			// 添加基本样式和图标样式
+			const baseStyles = `
+				/* 隐藏文件夹笔记 */
+				.has-folder-note {
+					position: relative;
+				}
+				
+				/* 文件夹笔记图标样式 */
+				.folder-note-icon {
+					position: absolute;
+					right: 8px;
+					top: 50%;
+					transform: translateY(-50%);
+					cursor: pointer;
+					opacity: 0.7;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					width: 16px;
+					height: 16px;
+					border-radius: 3px;
+				}
+			`;
+			
+			styleEl.textContent = baseStyles;
 			
 			// 使用 CSS 选择器匹配所有可能的文件夹笔记
 			// 这里需要一个复杂的选择器，因为我们无法预先知道所有文件夹名称
@@ -218,11 +232,17 @@ export default class FolderNotePlugin extends Plugin {
 		
 		// 如果有匹配的规则，添加到样式表
 		if (cssRules.length > 0) {
-			styleEl.textContent = `
+			// 保留基本样式
+			const baseStyles = styleEl.textContent || '';
+			
+			// 添加隐藏规则
+			const hideRules = `
 				${cssRules.join(',\n')} {
 					display: none !important;
 				}
 			`;
+			
+			styleEl.textContent = baseStyles + hideRules;
 		}
 	}
 
@@ -248,10 +268,33 @@ export default class FolderNotePlugin extends Plugin {
 
 	// 打开文件夹笔记
 	async openFolderNote(file: TFile) {
-		const leaf = this.app.workspace.getUnpinnedLeaf();
-		if (!leaf) return;
+		// 获取主编辑区当前活跃的标签页
+		const leaves = this.app.workspace.getLeavesOfType('markdown');
+		const activeLeaf = this.app.workspace.activeLeaf;
 		
-		await leaf.openFile(file);
+		// 优先在主编辑区的当前活跃标签页中打开
+		let targetLeaf: WorkspaceLeaf | null = null;
+		
+		// 检查是否存在主编辑区的标签页
+		if (leaves.length > 0) {
+			// 优先使用当前活跃的主编辑区标签页
+			if (activeLeaf && leaves.contains(activeLeaf)) {
+				targetLeaf = activeLeaf;
+			} else {
+				// 否则使用找到的第一个标签页
+				targetLeaf = leaves[0];
+			}
+		}
+		
+		// 如果没有找到合适的标签页，则创建一个新的
+		if (!targetLeaf) {
+			targetLeaf = this.app.workspace.getLeaf(true);
+		}
+		
+		// 打开文件
+		if (targetLeaf) {
+			await targetLeaf.openFile(file);
+		}
 	}
 
 	// 创建文件夹笔记
@@ -380,6 +423,16 @@ export default class FolderNotePlugin extends Plugin {
 			styleEl.remove();
 		}
 	}
+
+	// 扩展文件浏览器的行为
+	patchFileExplorer() {
+		try {
+			// 使用 CSS 来隐藏文件夹笔记
+			this.hideFolderNotesWithCSS();
+		} catch (error) {
+			console.error('扩展文件浏览器失败', error);
+		}
+	}
 }
 
 // 创建一个纯粹用于显示信息的设置页面
@@ -411,8 +464,9 @@ class FolderNoteInfoTab extends PluginSettingTab {
 		const featuresList = infoDiv.createEl('ul');
 		
 		const features = [
-			'点击文件夹时会显示该文件夹下与文件夹同名的 .md 笔记（如果存在）',
-			'如果文件夹下没有同名笔记，点击时会正常展开文件夹',
+			'文件夹旁会显示一个小图标，表示该文件夹存在对应的文件夹笔记',
+			'点击图标可以打开该文件夹对应的笔记',
+			'如果文件夹下没有同名笔记，点击图标时会询问是否要创建',
 			'文件夹笔记在文件浏览器中会被自动隐藏',
 			'右键点击文件夹可以手动创建文件夹笔记'
 		];

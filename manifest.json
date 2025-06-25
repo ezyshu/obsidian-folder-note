@@ -1,9 +1,9 @@
 {
 	"id": "obsidian-folder-note",
 	"name": "Folder Note",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "0.15.0",
-	"description": "点击文件夹时如存在与文件夹同名的 md 文件则显示它，否则正常展开文件夹",
+	"description": "为文件夹添加小图标，点击图标打开与文件夹同名的笔记，点击文件夹则正常展开",
 	"author": "ezyshu",
 	"authorUrl": "https://github.com/ezyshu",
 	"isDesktopOnly": false
